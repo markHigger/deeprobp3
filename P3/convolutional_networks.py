@@ -51,7 +51,34 @@ class Conv(object):
         # You are NOT allowed to use anything in torch.nn in other places. #
         ####################################################################
         # Replace "pass" statement with your code
-        pass
+        N,C,H,W = x.shape
+        F,_,HH,WW = w.shape
+        # print('running')
+        pad = conv_param['pad']
+        stride = conv_param['stride']
+        x_pad = torch.nn.functional.pad(x, (pad,pad,pad,pad), mode='constant',value=0)
+        H_out = int(1 + (H + 2 * pad - HH) / stride)
+        W_out = int(1 + (W + 2 * pad - WW) / stride)
+
+        # print(H_out)
+        out = torch.zeros(N,F,H_out,W_out, device=x.device)
+        for sample_idx in range(N):
+            for filt_idx in range(F):
+                for h_idx in range(H_out):
+                    for w_idx in range(W_out):
+                      #Find region in padded area
+                      h1 = h_idx * stride
+                      h2 = h1 + HH
+                      w1 = w_idx * stride
+                      w2 = w1 + WW
+
+                      region = x_pad[sample_idx, :, h1:h2, w1:w2]
+                      # print(out.shape)
+                      out[sample_idx,filt_idx, h_idx, w_idx] = torch.sum(region * w[filt_idx]) + b[filt_idx] #/ (HH*WW)
+                        
+        
+
+
         #####################################################################
         #                          END OF YOUR CODE                         #
         #####################################################################
@@ -76,6 +103,9 @@ class Conv(object):
         # TODO: Implement the convolutional backward pass.            #
         ###############################################################
         # Replace "pass" statement with your code
+        #dl/dw  = sum(dout * do_k/dw)
+        print(dout.shape)
+        
         pass
         ###############################################################
         #                       END OF YOUR CODE                      #
@@ -212,7 +242,7 @@ class ThreeLayerConvNet(object):
         checkpoint = torch.load(path, map_location='cpu')
         self.params = checkpoint['params']
         self.dtype = checkpoint['dtype']
-        self.reg = checkpoint['reg']
+        self.reg = checkpoint['re,filt_idx, h_idx, w_idx] = sum(region * w[filt_idx] + b[filt_idx]g']
         print("load checkpoint file: {}".format(path))
 
     def loss(self, X, y=None):
