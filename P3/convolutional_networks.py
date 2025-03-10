@@ -546,7 +546,11 @@ class DeepConvNet(object):
         # Replace "pass" statement with your code
         C, H, W = input_dims
         self.layers = []
+        self.bn_param = {'mode':'train'}
         for i in range(len(num_filters)):
+            if self.batchnorm:
+              self.params[f'gamma{i+1}'] = torch.ones(C, dtype=self.dtype, device=self.device)
+              self.params[f'beta{i+1}'] = torch.zeros(C, dtype=self.dtype, device=self.device)
             #check for pooling
             if weight_scale == 'kaiming':
               self.params[f'W{i+1}'] = kaiming_initializer(C, num_filters[i], filter_size, device=self.device, dtype = self.dtype)
@@ -555,9 +559,15 @@ class DeepConvNet(object):
             
             self.params[f'b{i+1}'] = torch.zeros(num_filters[i], dtype=dtype, device=self.device)
             if i in self.max_pools:
-              self.layers.append(Conv_ReLU_Pool())
+              if batchnorm:
+                self.layers.append(Conv_BatchNorm_ReLU_Pool())
+              else:
+                self.layers.append(Conv_ReLU_Pool())
             else:
-              self.layers.append(Conv_ReLU())
+              if batchnorm:
+                self.layers.append(Conv_BatchNorm_ReLU())
+              else:
+                self.layers.append(Conv_ReLU())
             C = num_filters[i]
 
         # Initialize weights for the fully connected layer
@@ -676,13 +686,46 @@ class DeepConvNet(object):
         #########################################################
         # Replace "pass" statement with your code
         caches = []
-        if 0 in self.max_pools:
-          out, temp_cache = self.layers[0].forward(X, self.params['W1'], self.params['b1'], conv_param, pool_param)
+        if self.batchnorm:
+          if 0 in self.max_pools:
+            print('in max pools')
+            out, temp_cache = self.layers[0].forward(X, self.params['W1'], 
+                                                     self.params['b1'],
+                                                     self.params['gamma1'], 
+                                                     self.params['beta1'],
+                                                     self.bn_param, 
+                                                     conv_param, pool_param)
+          else:
+            out, temp_cache = self.layers[0].forward(X, self.params['W1'], 
+                                                     self.params['b1'],
+                                                     self.params['gamma1'], 
+                                                     self.params['beta1'], 
+                                                     self.bn_param,
+                                                     conv_param)    
         else:
-          out, temp_cache = self.layers[0].forward(X, self.params['W1'], self.params['b1'], conv_param)
+          if 0 in self.max_pools:
+            out, temp_cache = self.layers[0].forward(X, self.params['W1'], self.params['b1'], conv_param, pool_param)
+          else:
+            out, temp_cache = self.layers[0].forward(X, self.params['W1'], self.params['b1'], conv_param)
         caches.append(temp_cache)
         #should all be pooling layers
         for i in range(1, self.num_layers - 1):
+          if self.batchnorm:
+            if i in self.max_pools:
+              out, temp_cache = self.layers[i].forward(X, self.params[f'W{i+1}'], 
+                                                       self.params[f'b{i+1}'],
+                                                       self.params[f'gamma{i+1}'], 
+                                                       self.params[f'beta{i+1}'],
+                                                       self.bn_param, 
+                                                       conv_param, pool_param)
+            else:
+              out, temp_cache = self.layers[i].forward(X, self.params[f'W{i+1}'], 
+                                                       self.params[f'b{i+1}'],
+                                                       self.params[f'gamma{i+1}'], 
+                                                       self.params[f'beta{i+1}'], 
+                                                       self.bn_param,
+                                                       conv_param) 
+          else:
             if i in self.max_pools:
               out, temp_cache = self.layers[i].forward(out, self.params[f'W{i+1}'], self.params[f'b{i+1}'], conv_param, pool_param)
             else:
@@ -718,7 +761,7 @@ class DeepConvNet(object):
         
         dout = dx
         for layer_num in reversed(range(1, self.num_layers + 1)):
-          dout, grads[f'W{layer_num}'], grads[f'b{layer_num}'] = self.layers[layer_num - 1].backward(dout, caches[layer_num - 1])\
+          dout, grads[f'W{layer_num}'], grads[f'b{layer_num}'] = self.layers[layer_num - 1].backward(dout, caches[layer_num - 1])
         
         #Regularize
         for layer_num in reversed(range(1, self.num_layers+1)):
@@ -761,8 +804,8 @@ def create_convolutional_solver_instance(data_dict, dtype, device):
     #########################################################
     # Replace "pass" statement with your code
     model = DeepConvNet(input_dims=input_dims, num_classes=10,
-                      num_filters=[64, 32, 16, 16, 16],
-                      max_pools=[1, 2, 3],
+                      num_filters=[8, 8, 8, 16, 32, 64],
+                      max_pools=[2,3],
                       weight_scale='kaiming',
                       reg=1e-4,
                       dtype=torch.float32,
@@ -770,10 +813,10 @@ def create_convolutional_solver_instance(data_dict, dtype, device):
                       )
 
     solver = Solver(model, small_data,
-                  num_epochs=25, batch_size=128,
+                  num_epochs=20, batch_size=128,
                   update_rule=adam,
                   optim_config={
-                    'learning_rate': 1e-3,
+                    'learning_rate': 3e-3,
                   },
                   print_every=100, device='cuda')
     #########################################################
@@ -1104,9 +1147,15 @@ class SpatialBatchNorm(object):
         ################################################################
         # Replace "pass" statement with your code
         N, C, H, W = x.shape
+        out = torch.zeros_like(x)
         for c in range(C):
-          print(f"hey{c}")
-            
+          D = H * W
+          x_conv = x[:,c,:,:]
+          x_conv = torch.reshape(x_conv, (N,D))
+          out_c, cache_c = BatchNorm.forward(x_conv, gamma[c], beta[c], bn_param)
+          out_c = torch.reshape(out_c, (N, H, W))
+          out[:,c,:,:] = out_c
+          cache.append(cache_c)
         ################################################################
         #                       END OF YOUR CODE                       #
         ################################################################
@@ -1137,7 +1186,22 @@ class SpatialBatchNorm(object):
         # ours is less than five lines.                                 #
         #################################################################
         # Replace "pass" statement with your code
-        pass
+        N, C, H, W = dout.shape
+        dx = torch.zeros_like(dout)
+        dgamma = torch.zeros((C,), device=dout.get_device(), dtype=dout.dtype)
+        dbeta = torch.zeros((C,), device=dout.get_device(), dtype=dout.dtype)
+        for c in range(C):
+          D = H * W
+          dout_conv = dout[:,c,:,:]
+          dout_conv = torch.reshape(dout_conv, (N,D))
+          dx_c, dgamma_c, dbeta_c = BatchNorm.backward(dout_conv, cache[c])
+          dx_c = torch.reshape(dx_c, (N, H, W))
+          dgamma_c = torch.sum(dgamma_c)
+          dbeta_c = torch.sum(dbeta_c)
+          dx[:,c,:,:] = dx_c
+          dgamma[c] = dgamma_c
+          dbeta[c] = dbeta_c
+          
         ##################################################################
         #                       END OF YOUR CODE                         #
         ##################################################################
