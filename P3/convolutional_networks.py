@@ -546,13 +546,12 @@ class DeepConvNet(object):
         # Replace "pass" statement with your code
         C, H, W = input_dims
         self.layers = []
-        self.bn_param = {'mode':'train'}
-        print(C)
+      
+        # print(C)
         for i in range(len(num_filters)):
           if self.batchnorm:
             self.params[f'gamma{i+1}'] = torch.ones(num_filters[i], dtype=self.dtype, device=self.device)
             self.params[f'beta{i+1}'] = torch.zeros(num_filters[i], dtype=self.dtype, device=self.device)
-          
           if weight_scale == 'kaiming':
             self.params[f'W{i+1}'] = kaiming_initializer(C, num_filters[i], filter_size, device=self.device, dtype = self.dtype)
           else:
@@ -569,8 +568,8 @@ class DeepConvNet(object):
               self.layers.append(Conv_BatchNorm_ReLU())
             else:
               self.layers.append(Conv_ReLU())
+          
           C = num_filters[i]
-          # print(C)
 
         # Initialize weights for the fully connected layer
         if weight_scale == 'kaiming':
@@ -694,7 +693,7 @@ class DeepConvNet(object):
                                                      self.params['gamma1'], 
                                                      self.params['beta1'],
                                                      conv_param,
-                                                     self.bn_param, 
+                                                     self.bn_params[0], 
                                                      pool_param)
           else:
             out, temp_cache = self.layers[0].forward(X, self.params['W1'], 
@@ -702,7 +701,7 @@ class DeepConvNet(object):
                                                      self.params['gamma1'], 
                                                      self.params['beta1'], 
                                                      conv_param, 
-                                                     self.bn_param)    
+                                                     self.bn_params[0])    
         else:
           if 0 in self.max_pools:
             out, temp_cache = self.layers[0].forward(X, self.params['W1'], self.params['b1'], conv_param, pool_param)
@@ -711,8 +710,6 @@ class DeepConvNet(object):
         caches.append(temp_cache)
         #should all be pooling layers
         for i in range(1, self.num_layers - 1):
-          print(f'forward for layer {i}')
-          print(len(temp_cache))
           if self.batchnorm:
             if i in self.max_pools:
               out, temp_cache = self.layers[i].forward(out, self.params[f'W{i+1}'], 
@@ -720,7 +717,7 @@ class DeepConvNet(object):
                                                        self.params[f'gamma{i+1}'], 
                                                        self.params[f'beta{i+1}'],
                                                        conv_param,
-                                                       self.bn_param, 
+                                                       self.bn_params[i], 
                                                        pool_param)
             else:
               
@@ -729,8 +726,8 @@ class DeepConvNet(object):
                                                        self.params[f'gamma{i+1}'], 
                                                        self.params[f'beta{i+1}'], 
                                                        conv_param,
-                                                       self.bn_param) 
-              print(output)
+                                                       self.bn_params[i]) 
+              # print(output)
               out, temp_cache = output
           else:
             if i in self.max_pools:
@@ -995,7 +992,9 @@ class BatchNorm(object):
             
             # Save the necessary values for backward pass
             cache = (x, gamma, sample_mean, sample_var, x_normalized, eps)
-
+            
+            # print(sample_mean.shape)
+            # print(running_m)
             # Update running mean and variance
             running_mean = momentum * running_mean + (1 - momentum) * sample_mean
             running_var = momentum * running_var + (1 - momentum) * sample_var
