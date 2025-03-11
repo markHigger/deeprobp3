@@ -85,8 +85,6 @@ class DetectorBackboneWithFPN(nn.Module):
         # Add THREE lateral 1x1 conv and THREE output 3x3 conv layers.
         self.fpn_params = nn.ModuleDict()
 
-        # Replace "pass" statement with your code
-
         self.fpn_params['lateral_c3'] = nn.Conv2d(dummy_out['c3'].shape[1], out_channels, kernel_size=1)
         self.fpn_params['lateral_c4'] = nn.Conv2d(dummy_out['c4'].shape[1], out_channels, kernel_size=1)
         self.fpn_params['lateral_c5'] = nn.Conv2d(dummy_out['c5'].shape[1], out_channels, kernel_size=1)
@@ -95,7 +93,6 @@ class DetectorBackboneWithFPN(nn.Module):
         self.fpn_params['p3'] = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
         self.fpn_params['p4'] = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
         self.fpn_params['p5'] = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
-        
         ######################################################################
         #                            END OF YOUR CODE                        #
         ######################################################################
@@ -113,6 +110,7 @@ class DetectorBackboneWithFPN(nn.Module):
 
         # Multi-scale features, dictionary with keys: {"c3", "c4", "c5"}.
         backbone_feats = self.backbone(images)
+
         fpn_feats = {"p3": None, "p4": None, "p5": None}
         ######################################################################
         # TODO: Fill output FPN features (p3, p4, p5) using RegNet features  #
@@ -185,7 +183,11 @@ class RPNPredictionNetwork(nn.Module):
         # `FCOSPredictionNetwork` for this code block.
         stem_rpn = []
         # Replace "pass" statement with your code
-        pass
+        prev_channels = in_channels
+        for channels in stem_channels:
+            stem_rpn.append(nn.Conv2d(prev_channels, channels, kernel_size=3, stride=1, padding=1))
+            stem_rpn.append(nn.ReLU(inplace=True))
+            prev_channels = channels
 
         # Wrap the layers defined by student into a `nn.Sequential` module:
         self.stem_rpn = nn.Sequential(*stem_rpn)
@@ -199,11 +201,9 @@ class RPNPredictionNetwork(nn.Module):
         ######################################################################
 
         # Replace these lines with your code, keep variable names unchanged.
-        self.pred_obj = None  # Objectness conv
-        self.pred_box = None  # Box regression conv
+        self.pred_obj = nn.Conv2d(stem_channels[-1], num_anchors, kernel_size=1, stride=1)  # Objectness conv
+        self.pred_box = nn.Conv2d(stem_channels[-1], num_anchors * 4, kernel_size=1, stride=1)  # Box regression conv
 
-        # Replace "pass" statement with your code
-        pass
         ######################################################################
         #                           END OF YOUR CODE                         #
         ######################################################################
@@ -235,7 +235,15 @@ class RPNPredictionNetwork(nn.Module):
         boxreg_deltas = {}
 
         # Replace "pass" statement with your code
-        pass
+        for level, feat in feats_per_fpn_level.items():
+            # Apply stem layers to the feature map
+            x = self.stem_rpn(feat)
+
+            # Objectness prediction: (batch_size, H, W, num_anchors)
+            object_logits[level] = self.pred_obj(x).flatten(start_dim=2).permute(0, 2, 1)
+
+            # Box regression prediction: (batch_size, H, W, num_anchors * 4)
+            boxreg_deltas[level] = self.pred_box(x).flatten(start_dim=2).permute(0, 2, 1)
         ######################################################################
         #                           END OF YOUR CODE                         #
         ######################################################################
