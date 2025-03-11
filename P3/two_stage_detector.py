@@ -289,7 +289,17 @@ def get_fpn_location_coords(
         # TODO: Implement logic to get location co-ordinates below.          #
         ######################################################################
         # Replace "pass" statement with your code
-        pass
+        _,_, H, W = feat_shape
+
+        x_coords, y_coords = torch.meshgrid(torch.arange(H, dtype=dtype, device=device),
+                                            torch.arange(W, dtype=dtype, device=device))
+        
+        xc = (x_coords + 0.5) * level_stride
+        yc = (y_coords + 0.5) * level_stride
+
+        coords = torch.stack([xc.flatten(), yc.flatten()], dim = -1)
+
+        location_coords[level_name] = coords
         ######################################################################
         #                             END OF YOUR CODE                       #
         ######################################################################
@@ -354,7 +364,23 @@ def generate_fpn_anchors(
             # locations to get top-left and bottom-right co-ordinates.
             ##################################################################
             # Replace "pass" statement with your code
-            pass
+            xc, yc = locations[:,0], locations[:, 1]
+    
+            anchor_area = (stride_scale * level_stride) ** 2
+            width = math.sqrt(anchor_area / aspect_ratio)
+            height = anchor_area / width
+            
+
+            x1 = xc - width/2
+            x2 = xc + width/2
+            y1 = yc - height/2
+            y2 = yc + height/2
+
+            anchors = torch.stack([x1,y1,x2,y2], dim=-1)
+
+            # Append the anchor boxes for the current aspect ratio
+            anchor_boxes.append(anchors)
+
             ##################################################################
             #                           END OF YOUR CODE                     #
             ##################################################################
@@ -388,7 +414,23 @@ def iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Tensor:
     # TODO: Implement the IoU function here.                                 #
     ##########################################################################
     # Replace "pass" statement with your code
-    pass
+
+    x1_intersection = torch.max(boxes1[:, None, 0], boxes2[:, 0])  
+    y1_intersection = torch.max(boxes1[:, None, 1], boxes2[:, 1])  
+    x2_intersection = torch.min(boxes1[:, None, 2], boxes2[:, 2]) 
+    y2_intersection = torch.min(boxes1[:, None, 3], boxes2[:, 3]) 
+
+    intersection_width = torch.clamp(x2_intersection - x1_intersection, min=0)
+    intersection_height = torch.clamp(y2_intersection - y1_intersection, min=0)
+
+    intersection_area = intersection_width * intersection_height
+
+    area_boxes1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])  # (M,)
+    area_boxes2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])  # (N,)
+
+    union_area = area_boxes1[:, None] + area_boxes2 - intersection_area  # (M, N)
+
+    iou = intersection_area / union_area
     ##########################################################################
     #                             END OF YOUR CODE                           #
     ##########################################################################
@@ -475,7 +517,27 @@ def rcnn_get_deltas_from_anchors(
     ##########################################################################
     deltas = None
     # Replace "pass" statement with your code
-    pass
+
+    cx_anchor = (anchors[:, 0] + anchors[:, 2]) / 2
+    cy_anchor = (anchors[:, 1] + anchors[:, 3]) / 2
+    w_anchor = anchors[:, 2] - anchors[:, 0]
+    h_anchor = anchors[:, 3] - anchors[:, 1]
+
+    # Compute GT centers and sizes
+    cx_gt = (gt_boxes[:, 0] + gt_boxes[:, 2]) / 2
+    cy_gt = (gt_boxes[:, 1] + gt_boxes[:, 3]) / 2
+    w_gt = gt_boxes[:, 2] - gt_boxes[:, 0]
+    h_gt = gt_boxes[:, 3] - gt_boxes[:, 1]
+
+    # Calculate the deltas (dx, dy, dw, dh)
+    dx = (cx_gt - cx_anchor) / w_anchor
+    dy = (cy_gt - cy_anchor) / h_anchor
+    dw = torch.log(w_gt / w_anchor)
+    dh = torch.log(h_gt / h_anchor)
+
+    deltas = torch.stack([dx, dy, dw, dh], dim=1)
+    deltas[gt_boxes[:, 0] < 0] = -1e8  # For invalid/empty anchors
+    print(deltas)
     ##########################################################################
     #                             END OF YOUR CODE                           #
     ##########################################################################
@@ -509,8 +571,28 @@ def rcnn_apply_deltas_to_anchors(
     # TODO: Implement the transformation logic to get output boxes.          #
     ##########################################################################
     output_boxes = None
-    # Replace "pass" statement with your code
-    pass
+    
+    # Compute anchor centers and sizes
+    cx_anchor = (anchors[:, 0] + anchors[:, 2]) / 2
+    cy_anchor = (anchors[:, 1] + anchors[:, 3]) / 2
+    w_anchor = anchors[:, 2] - anchors[:, 0]
+    h_anchor = anchors[:, 3] - anchors[:, 1]
+
+    # Apply deltas to the anchor centers and sizes
+    cx_pred = cx_anchor + deltas[:, 0] * w_anchor  # dx applied to center
+    cy_pred = cy_anchor + deltas[:, 1] * h_anchor  # dy applied to center
+    w_pred = torch.exp(deltas[:, 2]) * w_anchor  # dw applied to width (log scale)
+    h_pred = torch.exp(deltas[:, 3]) * h_anchor  # dh applied to height (log scale)
+
+    # Compute the predicted boxes (XYXY format)
+    x1_pred = cx_pred - w_pred / 2
+    y1_pred = cy_pred - h_pred / 2
+    x2_pred = cx_pred + w_pred / 2
+    y2_pred = cy_pred + h_pred / 2
+
+    # Stack to get the output boxes in XYXY format
+    output_boxes = torch.stack([x1_pred, y1_pred, x2_pred, y2_pred], dim=1)
+    
     ##########################################################################
     #                             END OF YOUR CODE                           #
     ##########################################################################
