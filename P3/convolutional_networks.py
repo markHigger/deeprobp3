@@ -66,7 +66,7 @@ class Conv(object):
         W_out = 1 + (W + 2 * pad - WW) // stride
         
         # Initialize output tensor
-        out = torch.zeros((N, F, H_out, W_out), dtype=torch.float64, device=torch.device('cuda'))
+        out = torch.zeros((N, F, H_out, W_out), dtype=x.dtype, device=x.get_device())
         
         # Perform convolution operation
         for n in range(N):  # Iterate over each sample
@@ -118,13 +118,13 @@ class Conv(object):
         N, F, H_out, W_out = dout.shape  # dout is of shape (N, F, H', W')
         
         # Initialize gradients
-        dx = torch.zeros_like(x, dtype=torch.float64, device=torch.device('cuda'))
-        dw = torch.zeros_like(w, dtype=torch.float64, device=torch.device('cuda'))
-        db = torch.zeros_like(b, dtype=torch.float64, device=torch.device('cuda'))
+        dx = torch.zeros_like(x)
+        dw = torch.zeros_like(w)
+        db = torch.zeros_like(b)
         
         # Pad x for backpropagation
         x_padded = torch.nn.functional.pad(x, (pad, pad, pad, pad))  # Pad (height, width)
-        dx_padded = torch.zeros_like(x_padded, dtype=torch.float64, device=torch.device('cuda'))  # Gradient with respect to padded input
+        dx_padded = torch.zeros_like(x_padded)  # Gradient with respect to padded input
         
         # Compute db (gradient with respect to bias)
         db = torch.sum(dout, dim=(0, 2, 3))  # Sum over N, H', W'
@@ -203,7 +203,7 @@ class MaxPool(object):
         W_out = 1 + (W - pool_width) // stride
         
         # Initialize the output tensor
-        out = torch.zeros((N, C, H_out, W_out), dtype=torch.float64, device=torch.device('cuda'))
+        out = torch.zeros((N, C, H_out, W_out), dtype=x.dtype, device=x.get_device())
         
         # Perform the max pooling operation
         for n in range(N):
@@ -254,7 +254,7 @@ class MaxPool(object):
         N, C, H, W = x.shape
         
         # Initialize dx (the gradient with respect to x)
-        dx = torch.zeros_like(x, dtype=torch.float64, device=torch.device('cuda'))
+        dx = torch.zeros_like(x)
         
         # Get output dimensions from dout (gradient of output)
         _, _, H_out, W_out = dout.shape
