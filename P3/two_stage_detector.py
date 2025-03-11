@@ -86,7 +86,16 @@ class DetectorBackboneWithFPN(nn.Module):
         self.fpn_params = nn.ModuleDict()
 
         # Replace "pass" statement with your code
-        pass
+
+        self.fpn_params['lateral_c3'] = nn.Conv2d(dummy_out['c3'].shape[1], out_channels, kernel_size=1)
+        self.fpn_params['lateral_c4'] = nn.Conv2d(dummy_out['c4'].shape[1], out_channels, kernel_size=1)
+        self.fpn_params['lateral_c5'] = nn.Conv2d(dummy_out['c5'].shape[1], out_channels, kernel_size=1)
+
+        # Output 3x3 convolution for p3, p4, p5
+        self.fpn_params['p3'] = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.fpn_params['p4'] = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.fpn_params['p5'] = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        
         ######################################################################
         #                            END OF YOUR CODE                        #
         ######################################################################
