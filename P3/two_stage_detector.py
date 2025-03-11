@@ -120,8 +120,19 @@ class DetectorBackboneWithFPN(nn.Module):
         # HINT: Use `F.interpolate` to upsample FPN features.                #
         ######################################################################
 
-        # Replace "pass" statement with your code
-        pass
+        c3 = self.fpn_params['lateral_c3'](backbone_feats['c3'])
+        c4 = self.fpn_params['lateral_c4'](backbone_feats['c4'])
+        c5 = self.fpn_params['lateral_c5'](backbone_feats['c5'])
+
+        p5 = c5
+        p4 = c4 + F.interpolate(p5, scale_factor=2, mode='nearest')
+        p3 = c3 + F.interpolate(p4, scale_factor=2, mode='nearest')
+
+        p3 = self.fpn_params['p3'](p3)
+        p4 = self.fpn_params['p4'](p4)
+        p5 = self.fpn_params['p5'](p5)
+
+        fpn_feats = {"p3": p3, "p4": p4, "p5": p5}
         ######################################################################
         #                            END OF YOUR CODE                        #
         ######################################################################
