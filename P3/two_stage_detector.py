@@ -113,7 +113,6 @@ class DetectorBackboneWithFPN(nn.Module):
 
         # Multi-scale features, dictionary with keys: {"c3", "c4", "c5"}.
         backbone_feats = self.backbone(images)
-
         fpn_feats = {"p3": None, "p4": None, "p5": None}
         ######################################################################
         # TODO: Fill output FPN features (p3, p4, p5) using RegNet features  #
@@ -122,7 +121,24 @@ class DetectorBackboneWithFPN(nn.Module):
         ######################################################################
 
         # Replace "pass" statement with your code
-        pass
+        # out = self.fpn_params['lateral_p3'].forward(backbone_feats['c3'])
+        lateral_c3 = self.fpn_params['lateral_c3'](backbone_feats['c3'])
+        lateral_c4 = self.fpn_params['lateral_c4'](backbone_feats['c4'])
+        lateral_c5 = self.fpn_params['lateral_c5'](backbone_feats['c5'])
+
+        # Create FPN layers by top-down pathway and lateral connections
+        p5 = lateral_c5
+        p4 = lateral_c4 + F.interpolate(p5, scale_factor=2, mode='nearest')
+        p3 = lateral_c3 + F.interpolate(p4, scale_factor=2, mode='nearest')
+
+        # Apply 3x3 convolutions to each FPN level (p3, p4, p5)
+        p3 = self.fpn_params['p3'](p3)
+        p4 = self.fpn_params['p4'](p4)
+        p5 = self.fpn_params['p5'](p5)
+
+        fpn_feats = {"p3": p3, "p4": p4, "p5": p5}
+
+        
         ######################################################################
         #                            END OF YOUR CODE                        #
         ######################################################################
