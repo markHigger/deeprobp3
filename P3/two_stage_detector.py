@@ -537,7 +537,6 @@ def rcnn_get_deltas_from_anchors(
 
     deltas = torch.stack([dx, dy, dw, dh], dim=1)
     deltas[gt_boxes[:, 0] < 0] = -1e8  # For invalid/empty anchors
-    print(deltas)
     ##########################################################################
     #                             END OF YOUR CODE                           #
     ##########################################################################
@@ -672,7 +671,31 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float = 0.5):
     # github.com/pytorch/vision/blob/main/torchvision/csrc/ops/cpu/nms_kernel.cpp
     #############################################################################
     # Replace "pass" statement with your code
-    pass
+
+    sorted_scores, sorted_indices = scores.sort(descending=True)
+
+    # Sorted boxes based on the indices
+    sorted_boxes = boxes[sorted_indices]
+    
+    keep = []
+    while sorted_boxes.shape[0] > 1:
+        # print(sorted_boxes.shape)
+        # Select the box with the highest score (first box)
+        current_box = sorted_boxes[0]
+        keep.append(sorted_indices[0])
+
+        # Compute IoU with the rest of the boxes
+        remaining_boxes = sorted_boxes[1:]
+        iou_values = iou(current_box.reshape((1,4)), remaining_boxes)
+
+        # Keep only boxes with IoU less than the threshold
+        mask = iou_values.squeeze() <= iou_threshold
+
+        # Update the list of remaining boxes and indices
+        sorted_boxes = remaining_boxes[mask]
+        sorted_indices = sorted_indices[1:][mask]
+        # print(sorted_boxes.shape)
+    keep = torch.tensor(keep, dtype=torch.long)
     #############################################################################
     #                              END OF YOUR CODE                             #
     #############################################################################
