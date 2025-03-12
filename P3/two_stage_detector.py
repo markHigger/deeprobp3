@@ -278,7 +278,7 @@ def get_fpn_location_coords(
             tensors of shape `(H * W, 2)` giving `(xc, yc)` co-ordinates of the
             centers of receptive fields of the FPN locations, on input image.
     """
-    if device < 0:
+    if device == -1:
         device = 'cpu'
     # Set these to `(N, 2)` Tensors giving absolute location co-ordinates.
     location_coords = {
@@ -383,6 +383,8 @@ def generate_fpn_anchors(
             y2 = yc + height/2
 
             anchors = torch.stack([x1,y1,x2,y2], dim=-1)
+            anchors.type(locations_per_fpn_level[level_name].dtype)
+        
             if locations_per_fpn_level[level_name].get_device() >= 0:
                 anchors.to(locations_per_fpn_level[level_name].get_device())
 
