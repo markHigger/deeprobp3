@@ -66,7 +66,10 @@ class Conv(object):
         W_out = 1 + (W + 2 * pad - WW) // stride
         
         # Initialize output tensor
-        out = torch.zeros((N, F, H_out, W_out), dtype=x.dtype, device=x.get_device())
+        if x.get_device() >= 0:
+          out = torch.zeros((N, F, H_out, W_out), dtype=x.dtype, device=x.get_device())
+        else:
+          out = torch.zeros((N, F, H_out, W_out), dtype=x.dtype)
         
         # Perform convolution operation
         for n in range(N):  # Iterate over each sample
@@ -203,8 +206,11 @@ class MaxPool(object):
         W_out = 1 + (W - pool_width) // stride
         
         # Initialize the output tensor
-        out = torch.zeros((N, C, H_out, W_out), dtype=x.dtype, device=x.get_device())
-        
+
+        if x.get_device() >= 0:
+          out = torch.zeros((N, C, H_out, W_out), dtype=x.dtype, device=x.get_device())
+        else:
+          out = torch.zeros((N, C, H_out, W_out), dtype=x.dtype)
         # Perform the max pooling operation
         for n in range(N):
             for c in range(C):
@@ -1202,8 +1208,12 @@ class SpatialBatchNorm(object):
         # Replace "pass" statement with your code
         N, C, H, W = dout.shape
         dx = torch.zeros_like(dout)
-        dgamma = torch.zeros((C,), device=dout.get_device(), dtype=dout.dtype)
-        dbeta = torch.zeros((C,), device=dout.get_device(), dtype=dout.dtype)
+        if dout.get_device() >= 0:
+          dgamma = torch.zeros((C,), device=dout.get_device(), dtype=dout.dtype)
+          dbeta = torch.zeros((C,), device=dout.get_device(), dtype=dout.dtype)
+        else:
+          dgamma = torch.zeros((C,), dtype=dout.dtype)
+          dbeta = torch.zeros((C,), dtype=dout.dtype)
         for c in range(C):
           D = H * W
           dout_conv = dout[:,c,:,:]
