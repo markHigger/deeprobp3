@@ -240,16 +240,18 @@ class RPNPredictionNetwork(nn.Module):
             x = self.stem_rpn(feat)
 
             # Objectness prediction: (batch_size, H, W, num_anchors)
-            object_logits[level] = self.pred_obj(x).flatten(start_dim=1).permute(0, 1)
-            batch_size, dim2 = object_logits[level].shape
-            # Box regression prediction: (batch_size, H, W)
-            temp = self.pred_box(x)
+            
+            level_logits = self.pred_obj(x).flatten(start_dim=1).permute(0, 1)
+            object_logits[level] = level_logits
+            batch_size, dim2 = level_logits.shape
+            print(level_logits.shape)
 
-            boxreg_deltas[level] = temp.view(batch_size,dim2,4)
+            # Box regression prediction: (batch_size, H, W, num_anchors * 4)
+            boxreg_deltas[level] = self.pred_box(x).view(batch_size, dim2, 4)
+  
         ######################################################################
         #                           END OF YOUR CODE                         #
         ######################################################################
-
         return [object_logits, boxreg_deltas]
 
 
@@ -278,8 +280,7 @@ def get_fpn_location_coords(
             tensors of shape `(H * W, 2)` giving `(xc, yc)` co-ordinates of the
             centers of receptive fields of the FPN locations, on input image.
     """
-    if device == -1:
-        device = 'cpu'
+
     # Set these to `(N, 2)` Tensors giving absolute location co-ordinates.
     location_coords = {
         level_name: None for level_name, _ in shape_per_fpn_level.items()
@@ -293,7 +294,6 @@ def get_fpn_location_coords(
         ######################################################################
         # Replace "pass" statement with your code
         _,_, H, W = feat_shape
-        # print(device)
 
         x_coords, y_coords = torch.meshgrid(torch.arange(H, dtype=dtype, device=device),
                                             torch.arange(W, dtype=dtype, device=device))
@@ -302,8 +302,6 @@ def get_fpn_location_coords(
         yc = (y_coords + 0.5) * level_stride
 
         coords = torch.stack([xc.flatten(), yc.flatten()], dim = -1)
-        if x_coords.get_device() >= 0:
-            coords.to(device)
 
         location_coords[level_name] = coords
         ######################################################################
@@ -383,10 +381,6 @@ def generate_fpn_anchors(
             y2 = yc + height/2
 
             anchors = torch.stack([x1,y1,x2,y2], dim=-1)
-            anchors.type(locations_per_fpn_level[level_name].dtype)
-        
-            if locations_per_fpn_level[level_name].get_device() >= 0:
-                anchors.to(locations_per_fpn_level[level_name].get_device())
 
             # Append the anchor boxes for the current aspect ratio
             anchor_boxes.append(anchors)
@@ -546,6 +540,7 @@ def rcnn_get_deltas_from_anchors(
     dh = torch.log(h_gt / h_anchor)
 
     deltas = torch.stack([dx, dy, dw, dh], dim=1)
+    print(deltas.shape)
     deltas[gt_boxes[:, 0] < 0] = -1e8  # For invalid/empty anchors
     ##########################################################################
     #                             END OF YOUR CODE                           #
@@ -586,9 +581,6 @@ def rcnn_apply_deltas_to_anchors(
     cy_anchor = (anchors[:, 1] + anchors[:, 3]) / 2
     w_anchor = anchors[:, 2] - anchors[:, 0]
     h_anchor = anchors[:, 3] - anchors[:, 1]
-    
-    # print(f"anchors device: {anchors.get_device()}")
-    # print(f"deltas device: {deltas.get_device()}")
 
     # Apply deltas to the anchor centers and sizes
     cx_pred = cx_anchor + deltas[:, 0] * w_anchor  # dx applied to center
@@ -684,7 +676,6 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float = 0.5):
     # github.com/pytorch/vision/blob/main/torchvision/csrc/ops/cpu/nms_kernel.cpp
     #############################################################################
     # Replace "pass" statement with your code
-
     sorted_scores, sorted_indices = scores.sort(descending=True)
 
     # Sorted boxes based on the indices
@@ -879,8 +870,6 @@ class RPN(nn.Module):
     ):
         # Get batch size from FPN feats:
         num_images = feats_per_fpn_level["p3"].shape[0]
-        device = feats_per_fpn_level["p3"].get_device()
-        dtype = feats_per_fpn_level["p3"].dtype
 
         ######################################################################
         # TODO: Implement the training forward pass. Follow these steps:
@@ -896,18 +885,14 @@ class RPN(nn.Module):
             None,
             None,
         )
-        # Replace "pass" statement with your code
-
-        pred_obj_logits, pred_boxreg_deltas = self.pred_net.forward(feats_per_fpn_level)
-        # print(pred_boxreg_deltas['p3'].shape)
 
         fpn_feats_shapes = {
             level_name: feat.shape for level_name, feat in feats_per_fpn_level.items()
-            }
-
-        location_per_fpn_level = get_fpn_location_coords(fpn_feats_shapes, strides_per_fpn_level, dtype=dtype, device=device)
-        anchors_per_fpn_level = generate_fpn_anchors(location_per_fpn_level,strides_per_fpn_level,self.anchor_stride_scale)
-        # print(anchors_per_fpn_level['p4'].shape)
+        }
+        # Replace "pass" statement with your code
+        pred_obj_logits, pred_boxreg_deltas = self.pred_net.forward(feats_per_fpn_level)
+        locations_per_fpn_level = get_fpn_location_coords(fpn_feats_shapes, strides_per_fpn_level)
+        anchors_per_fpn_level = generate_fpn_anchors(locations_per_fpn_level, strides_per_fpn_level,self.anchor_stride_scale, self.anchor_aspect_ratios)
         ######################################################################
         #                           END OF YOUR CODE                         #
         ######################################################################
@@ -947,13 +932,7 @@ class RPN(nn.Module):
         # giving matching GT boxes to anchor boxes). Fill this list:
         matched_gt_boxes = []
         # Replace "pass" statement with your code
-
-        # print(gt_boxes)
-        for gt_box_level in gt_boxes:
-            # print(gt_box_level.shape)
-            matched_level = rcnn_match_anchors_to_gt(anchor_boxes, gt_box_level, iou_thresholds=self.anchor_iou_thresholds)
-            matched_gt_boxes.append(matched_level)
-        # print(matched_gt_boxes)
+        pass
         ######################################################################
         #                           END OF YOUR CODE                         #
         ######################################################################
@@ -994,19 +973,7 @@ class RPN(nn.Module):
             # Feel free to delete this line: (but keep variable names same)
             loss_obj, loss_box = None, None
             # Replace "pass" statement with your code
-            fg_idx, bg_idx = sample_rpn_training(matched_gt_boxes, matched_gt_boxes.shape[0], 0.5)
-            
-            gt_deltas = rcnn_get_deltas_from_anchors(anchor_boxes, matched_gt_boxes)
-            
-            loss_box = F.l1_loss(pred_boxreg_deltas[fg_idx], gt_deltas[fg_idx], reduction='none')
-            # loss_box[bg_idx] *= 0.0
-            # print(torch.max(loss_box))
-            
-            objectness = torch.zeros_like(pred_obj_logits)
-            # objectness[fg_idx] = 1
-            loss_obj = F.binary_cross_entropy_with_logits(pred_obj_logits[fg_idx], objectness[fg_idx], reduction="none")
-            # print(torch.max(loss_obj))
-
+            output_boxes = rcnn_apply_deltas_to_anchors
             ##################################################################
             #                         END OF YOUR CODE                       #
             ##################################################################
@@ -1088,26 +1055,17 @@ class RPN(nn.Module):
                 # separately; you will NOT lose points if you don't use it here.
                 ##############################################################
                 # Replace "pass" statement with your code
-                #print(level_boxreg_deltas.shape)
-                #print(level_anchors.shape)
+                print(level_boxreg_deltas.shape)
+                print(level_anchors.shape)
                 proposal_boxes = rcnn_apply_deltas_to_anchors(level_boxreg_deltas, level_anchors)
-                # print(proposal_boxes.shape)
+                proposal_boxes = proposal_boxes.clamp((0,0), image_size)
 
-                #clamp
-                proposal_boxes[:,::2] = proposal_boxes[:,::2].clamp(min=0, max=image_size[0])
-                proposal_boxes[:,1::2] = proposal_boxes[:,1::2].clamp(min=0, max=image_size[1])
+                topk_scores, topk_indices = level_obj_logits.topk(self.pre_nms_topk, dim=0, largest=True)
+                topk_proposals = proposal_boxes[topk_indices]
 
-
-                topk = min(self.pre_nms_topk, level_obj_logits.shape[0])
-                topk_scores, topk_idcs = torch.topk(level_obj_logits, topk)
-                proposals_topk = proposal_boxes[topk_idcs]
-
-                keep = torchvision.ops.nms(proposals_topk, topk_scores, self.nms_thresh)
-                proposals_per_fpn_level_per_image[level_name] = proposals_topk[keep]
+                keep = torchvision.ops.nms(topk_proposals, topk_scores, self.nms_thresh)
+                proposals_per_fpn_level_per_image[level_name] = topk_proposals[keep]
                 scores_per_fpn_level_per_image[level_name] = topk_scores[keep]
-                
-
-
                 ##############################################################
                 #                        END OF YOUR CODE                    #
                 ##############################################################
